@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as sharp from 'sharp';
@@ -32,5 +32,34 @@ export class ImagesService {
     });
 
     return await newImage.save();
+  }
+
+  async findImagesByDateRange(startDate: string, endDate: string) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      throw new BadRequestException('Invalid date format');
+    }
+
+    return this.imageModel
+      .find({
+        uploadDate: { $gte: start, $lte: end },
+      })
+      .exec();
+  }
+
+  async getImagesGroupedByHour() {
+    return this.imageModel.aggregate([
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d %H:00:00', date: '$uploadDate' },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
   }
 }

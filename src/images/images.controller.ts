@@ -1,8 +1,10 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -13,9 +15,21 @@ import { FileInterceptor } from '@nestjs/platform-express';
 export class ImagesController {
   constructor(private readonly imagesService: ImagesService) {}
 
-  @Get('test')
-  test() {
-    return 'test';
+  @Get('search')
+  async getImagesByDateRange(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    if (!startDate || !endDate) {
+      throw new BadRequestException('se nececitan fecha de inicio y fin');
+    }
+
+    return this.imagesService.findImagesByDateRange(startDate, endDate);
+  }
+
+  @Get('grouped-by-hour')
+  async getImagesGroupedByHour() {
+    return this.imagesService.getImagesGroupedByHour();
   }
 
   @Post('upload')

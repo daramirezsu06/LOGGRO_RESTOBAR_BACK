@@ -3,35 +3,53 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as sharp from 'sharp';
 import { Image } from './schemas/image.schema';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as AWS from 'aws-sdk';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ImagesService {
+  private s3: AWS.S3;
+
   constructor(
     @InjectModel('Image') private readonly imageModel: Model<Image>,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    const awsConfig = this.configService.get('config.aws');
+
+    this.s3 = new AWS.S3({
+      accessKeyId: awsConfig.accessKeyId,
+      secretAccessKey: awsConfig.secretAccessKey,
+      region: awsConfig.region,
+    });
+  }
 
   async processAndSaveImage(file: Express.Multer.File, name: string) {
-    const buffer = await sharp(file.buffer).png().toBuffer();
+    try {
+      const buffer = await sharp(file.buffer).png().toBuffer();
 
-    const uploadDir = path.join(__dirname, '../../uploads');
+      const filename = `${Date.now()}.png`;
 
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+      const uploadParams = {
+        Bucket: this.configService.get('config.aws.bucketName'),
+        Key: filename,
+        Body: buffer,
+        ContentType: 'image/png',
+      };
+
+      const uploadResult = await this.s3.upload(uploadParams).promise();
+
+      const newImage = new this.imageModel({
+        name,
+        url: uploadResult.Location,
+        uploadDate: new Date(),
+      });
+
+      return await newImage.save();
+    } catch (error) {
+      throw new BadRequestException(
+        'Error uploading image to S3: ' + error.message,
+      );
     }
-
-    const filename = `${Date.now()}.png`;
-    const filePath = path.join(__dirname, '../../uploads', filename);
-    fs.writeFileSync(filePath, buffer);
-
-    const newImage = new this.imageModel({
-      name,
-      url: filePath,
-      uploadDate: new Date(),
-    });
-
-    return await newImage.save();
   }
 
   async findImagesByDateRange(startDate: string, endDate: string) {
